@@ -7,9 +7,68 @@ export default function App() {
   const [heightMm, setHeightMm] = useState("");
   const [suvPercent, setSuvPercent] = useState("");
   const [sedanPercent, setSedanPercent] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    setError(null);
+    const length = Number(lengthMm);
+    const width = Number(widthMm);
+    const height = Number(heightMm);
+    const suv = Number(suvPercent);
+    const sedan = Number(sedanPercent);
+    if (
+      [length, width, height, suv, sedan].some(
+        (n) => Number.isNaN(n) || n <= 0,
+      )
+    ) {
+      setError("Enter positive numbers for all fields.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          length_mm: length,
+          width_mm: width,
+          height_mm: height,
+          suv_percent: suv,
+          sedan_percent: sedan,
+        }),
+      });
+      if (!res.ok) {
+        const detail = await res
+          .json()
+          .catch(() => ({ detail: res.statusText }));
+        const d = detail?.detail;
+        let msg: string;
+        if (typeof d === "string") {
+          msg = d;
+        } else if (Array.isArray(d)) {
+          msg = d.map((x: { msg?: string }) => x?.msg ?? "").join(" ");
+        } else {
+          msg = JSON.stringify(detail);
+        }
+        throw new Error(msg || `Request failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "nextkraft-parking.pdf";
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Generation failed.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -20,6 +79,11 @@ export default function App() {
       </header>
 
       <main className="page-main">
+        {error ? (
+          <p className="field__hint" style={{ color: "#c44", marginBottom: "1rem" }}>
+            {error}
+          </p>
+        ) : null}
         <form className="param-form" onSubmit={handleSubmit} noValidate>
           <div className="param-form__grid">
             <label className="field">
@@ -35,6 +99,7 @@ export default function App() {
                 value={lengthMm}
                 onChange={(e) => setLengthMm(e.target.value)}
                 inputMode="decimal"
+                disabled={loading}
               />
             </label>
 
@@ -51,6 +116,7 @@ export default function App() {
                 value={widthMm}
                 onChange={(e) => setWidthMm(e.target.value)}
                 inputMode="decimal"
+                disabled={loading}
               />
             </label>
 
@@ -67,6 +133,7 @@ export default function App() {
                 value={heightMm}
                 onChange={(e) => setHeightMm(e.target.value)}
                 inputMode="decimal"
+                disabled={loading}
               />
             </label>
 
@@ -84,6 +151,7 @@ export default function App() {
                 value={suvPercent}
                 onChange={(e) => setSuvPercent(e.target.value)}
                 inputMode="decimal"
+                disabled={loading}
               />
             </label>
 
@@ -101,13 +169,14 @@ export default function App() {
                 value={sedanPercent}
                 onChange={(e) => setSedanPercent(e.target.value)}
                 inputMode="decimal"
+                disabled={loading}
               />
             </label>
           </div>
 
           <div className="param-form__actions">
-            <button type="submit" className="btn-submit">
-              Submit
+            <button type="submit" className="btn-submit" disabled={loading}>
+              {loading ? "Generating…" : "Submit"}
             </button>
           </div>
         </form>
